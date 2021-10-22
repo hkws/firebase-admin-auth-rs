@@ -1,0 +1,20 @@
+[package]
+name = "firebase-admin-auth-rs"
+version = "0.1.0"
+authors = ["h-kawase <h.kawase@w.ntt.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+jsonwebtoken = "7.1.1"
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+log = "0.4"
+
+[dev-dependencies]
+actix-web = "3"
+futures-util = "0.3.12"
+actix-files = "0.5.0"
+env_logger = "0.7"
+actix-cors = "0.5.3"

@@ -1,0 +1,24 @@
+<html>
+<head>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/5.6.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/5.6.0/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/ui/4.5.0/firebase-ui-auth.js"></script>
+  <link type="text/css" rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/4.5.0/firebase-ui-auth.css">
+  <script src="/main.js"></script>
+  <title>actix-web login example</title>
+</head>
+<body>
+  <div id="loggedout">
+    <h1>actix-web login example</h1>
+    <div id="firebaseui-auth-container"></div>
+  </div>
+  <div id="loggedin">
+    <h1>logged in!</h1>
+    <div>welcome, <span id="user"></span></div>
+    <div><button id="get-uid-button">get uid</button></div>
+    <div id="responses"></div>
+    <div><button id="logout-button">logout</button></div>
+  </div>
+</body>
+</html>
