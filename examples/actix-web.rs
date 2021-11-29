@@ -39,7 +39,9 @@ impl FromRequest for RequestUser {
         }
         let _token = token.unwrap();
 
-        let jwk_auth = req.app_data::<Data<JwkAuth>>().expect("Could not get JwkAuth");
+        // let jwk_auth = req.app_data::<Data<JwkAuth>>().expect("Could not get JwkAuth");
+        let jwk_auth = req.app_data::<Data<JwkAuth>>().unwrap();
+        
         let token_data = jwk_auth.verify(&_token);
         match token_data {
             Some(data) => ok(RequestUser {
@@ -78,7 +80,7 @@ async fn main() -> std::io::Result<()> {
                         .target(env_logger::Target::Stdout)
                         .init();
 
-    let auth = web::Data::new(JwkAuth::new());
+    let auth = web::Data::new(JwkAuth::new().await);
     HttpServer::new(move || {
         App::new().app_data(auth.clone())
                   .service(uid)

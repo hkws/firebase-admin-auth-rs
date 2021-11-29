@@ -3,17 +3,20 @@ name = "firebase-admin-auth-rs"
 version = "0.1.0"
 authors = ["h-kawase <h.kawase@w.ntt.com>"]
 edition = "2018"
+resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 jsonwebtoken = "7.1.1"
-reqwest = { version = "0.11", features = ["blocking", "json"] }
+reqwest = { version = "0.11.6", features = ["json"] }
+hyper = { version = "0.14.15" }
 log = "0.4"
+tokio = { version = "1.14.0", features = ["rt", "time"] }
 
 [dev-dependencies]
-actix-web = "3"
+actix-web = "4.0.0-beta.12"
 futures-util = "0.3.12"
 actix-files = "0.5.0"
 env_logger = "0.7"

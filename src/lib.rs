@@ -1,5 +1,4 @@
 mod jwk;
-mod cache_control;
 mod verifier;
 pub mod jwk_auth;
 

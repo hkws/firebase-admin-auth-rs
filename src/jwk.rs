@@ -2,7 +2,6 @@ use reqwest;
 use std::time::Duration;
 use std::error::Error;
 use serde::Deserialize;
-use crate::cache_control::get_max_age;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
 //---------------------
@@ -50,14 +49,14 @@ pub struct JwkKeys {
     pub validity: Duration,
 }
 
-pub fn fetch_keys_with_config(config: JwkConfig) -> Result<JwkKeys, Box<dyn Error>> {
-    // let response = reqwest::get(&config.url)
-    //                         .await?
-    //                         .json::<KeyResponse>()
-    //                         .await?;
-    let response = reqwest::blocking::get(&config.url)?;
+pub async fn fetch_keys_with_config(config: JwkConfig) -> Result<JwkKeys, Box<dyn Error>> {
+    let response = reqwest::get(&config.url)
+                            .await?;
+                            // .json::<KeyResponse>()
+                            // .await?;
+    // let response = reqwest::blocking::get(&config.url)?;
     let max_age = get_max_age(&response).unwrap_or(DEFAULT_TIMEOUT); //DEFAULT_TIMEOUT;
-    let response_body = response.json::<KeyResponse>()?;
+    let response_body = response.json::<KeyResponse>().await?;
     return Ok(JwkKeys {
         keys: response_body.keys,
         validity: max_age
@@ -68,6 +67,53 @@ pub fn fetch_keys_with_config(config: JwkConfig) -> Result<JwkKeys, Box<dyn Erro
 // jwk_configで設定してあるパラメータを使って公開鍵を取得する
 // 外部から利用されるのはこのfunctionだけのはず
 //
-pub fn fetch_keys() -> Result<JwkKeys, Box<dyn Error>> {
-    return fetch_keys_with_config(get_configuration())
+pub async fn fetch_keys() -> Result<JwkKeys, Box<dyn Error>> {
+    return fetch_keys_with_config(get_configuration()).await
+}
+
+use reqwest::Response;
+use reqwest::header::HeaderValue;
+
+pub enum MaxAgeParseError {
+    NoMaxAgeSpecified,
+    NoCacheControlHeader,
+    MaxAgeValueEmpty,
+    NonNumericMaxAge
+}
+
+pub fn get_max_age(response: &Response) -> Result<Duration, MaxAgeParseError>{
+    let headers = response.headers();
+    let cache_control = headers.get("Cache-Control");
+
+    match cache_control {
+        Some(cache_control_value) => parse_cache_control_value(cache_control_value),
+        None => Err(MaxAgeParseError::NoCacheControlHeader)
+    }
+}
+
+fn parse_cache_control_value(value: &HeaderValue) -> Result<Duration, MaxAgeParseError> {
+    match value.to_str() {
+        Ok(str_value) => _parse_cache_control_value(str_value),
+        Err(_) => Err(MaxAgeParseError::NoCacheControlHeader)
+    }
+}
+
+fn _parse_cache_control_value(value: &str) -> Result<Duration, MaxAgeParseError> {
+    let tokens: Vec<&str> = value.split(",").collect();
+    for token in tokens {
+        let kv: Vec<&str> = token.split("=").map(|s| s.trim()).collect();
+        let key = kv.first().unwrap();
+        let value = kv.get(1);
+        if String::from("max-age").eq(&key.to_lowercase()) {
+            match value {
+                Some(value) => {
+                    return Ok(Duration::from_secs(value.parse().map_err(|_| MaxAgeParseError::NonNumericMaxAge)?))
+                },
+                None => {
+                    return Err(MaxAgeParseError::MaxAgeValueEmpty)
+                } 
+            }
+        }
+    }
+    return Err(MaxAgeParseError::NoMaxAgeSpecified);
 }

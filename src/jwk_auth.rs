@@ -3,13 +3,13 @@ use crate::verifier::{Claims, JwkVerifier};
 use jsonwebtoken::TokenData;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::sync::mpsc::{self, TryRecvError};
-use std::thread;
 use log::{info};
+use tokio::time::sleep;
+use tokio::task::JoinHandle;
 
-type Delay = Duration;
-type Cancel = Box<dyn Fn() -> () + Send>;
-type CleanupFn = Box<dyn Fn() -> () + Send>;
+// type Delay = Duration;
+// type Cancel = Box<dyn Fn() -> () + Send>;
+// type CleanupFn = Box<dyn Fn() -> () + Send>;
 
 // verifierはメインスレッドで参照、key更新用のスレッドで更新されるため、
 // スレッド間でメモリを共有できるよう実装する必要がある
@@ -28,19 +28,19 @@ type CleanupFn = Box<dyn Fn() -> () + Send>;
 // #[derive(Clone)]
 pub struct JwkAuth {
     verifier: Arc<Mutex<JwkVerifier>>,
-    cleanup: Mutex<CleanupFn>
+    task_handler: Arc<Mutex<Box<JoinHandle<()>>>>
 }
 
 impl Drop for JwkAuth {
     fn drop(&mut self) {
-        let cleanup_fn = self.cleanup.lock().unwrap();
-        cleanup_fn();
+        let handler = self.task_handler.lock().unwrap();
+        handler.abort();
     }
 }
 
 impl JwkAuth {
-    pub fn new() -> JwkAuth {
-        let jwk_key_result = fetch_keys();
+    pub async fn new() -> JwkAuth {
+        let jwk_key_result = fetch_keys().await;
         let jwk_keys: JwkKeys = match jwk_key_result {
             Ok(keys) => keys,
             Err(_) => {
@@ -50,60 +50,58 @@ impl JwkAuth {
         let verifier = Arc::new(Mutex::new(JwkVerifier::new(jwk_keys.keys)));
         let mut instance = JwkAuth {
             verifier: verifier,
-            cleanup: Mutex::new(Box::new(|| {}))
+            task_handler: Arc::new(Mutex::new(Box::new(tokio::spawn(async {}))))
         };
-        instance.start_key_update();
+        instance.start_periodic_key_update();
         instance
     }
     pub fn verify(&self, token: &String) -> Option<TokenData<Claims>> {
         let verifier = self.verifier.lock().unwrap();
         verifier.verify(token)
     }
-    fn start_key_update(&mut self) {
+    fn start_periodic_key_update(&mut self) {
         let verifier_ref = Arc::clone(&self.verifier);
-        let stop = use_periodic_job(move || { 
-            match fetch_keys() {
-                Ok(jwk_keys) => {
-                    let mut verifier = verifier_ref.lock().unwrap();
-                    verifier.set_keys(jwk_keys.keys);
-                    info!("Updated JWK Keys. Next refresh will be in {:?}", jwk_keys.validity);
-                    jwk_keys.validity
-                },
-                Err(_) => Duration::from_secs(60)
+        let task = tokio::spawn(async move {
+            loop {
+                let delay = match fetch_keys().await {
+                    Ok(jwk_keys) => {
+                        {
+                            let mut verifier = verifier_ref.lock().unwrap();
+                            verifier.set_keys(jwk_keys.keys);
+                        }
+                        info!("Updated JWK Keys. Next refresh will be in {:?}", jwk_keys.validity);
+                        jwk_keys.validity
+                    },
+                    Err(_) => Duration::from_secs(60)
+                };
+                sleep(delay).await;
             }
         });
-        let mut cleanup = self.cleanup.lock().unwrap();
-        *cleanup = stop;
+        let mut handler = self.task_handler.lock().unwrap();
+        *handler = Box::new(task);
     }
 }
 
-pub fn use_periodic_job<F>(job: F) -> Cancel
-where
-    F: Fn() -> Delay,
-    F: Send + 'static,
-{
-    // mpsc: multiple producer. single consumer
-    // 複数の送信側txと値を消費する一つの受信側rxを持てる。よってtxはcloneできる。
-    // 何かしらチャンネルを通じてrecvされるまで、delay秒毎に公開鍵の更新を続ける
-    let (shutdown_tx, shutdown_rx) = mpsc::channel();
-    thread::spawn(move || {
-        loop {
-            let delay = job();
-            thread::sleep(delay);
-            if let Ok(_) | Err(TryRecvError::Disconnected) = shutdown_rx.try_recv() {
-                break;
-            }
-        }
-    });
-    // periodicな公開鍵更新を、txからメッセージを送ることで停止する
-    // ここでBoxされた停止用関数は、JwkAuthのcleanupとして保持され、
-    // JwkAuthのdrop時（すなわちmain終了時）に実行される。
-    Box::new(move || {
-        info!("Stopping...");
-        let _ = shutdown_tx.send("send");
-    })
-}
-
+// // mpsc: multiple producer. single consumer
+// // 複数の送信側txと値を消費する一つの受信側rxを持てる。よってtxはcloneできる。
+// // 何かしらチャンネルを通じてrecvされるまで、delay秒毎に公開鍵の更新を続ける
+// let (shutdown_tx, shutdown_rx) = mpsc::channel();
+// thread::spawn(move || async {
+//     loop {
+//         let delay = job().await;
+//         thread::sleep(delay);
+//         if let Ok(_) | Err(TryRecvError::Disconnected) = shutdown_rx.try_recv() {
+//             break;
+//         }
+//     }
+// });
+// // periodicな公開鍵更新を、txからメッセージを送ることで停止する
+// // ここでBoxされた停止用関数は、JwkAuthのcleanupとして保持され、
+// // JwkAuthのdrop時（すなわちmain終了時）に実行される。
+// Box::new(move || {
+//     info!("Stopping...");
+//     let _ = shutdown_tx.send("send");
+// })
 
 // use crate::auth::jwk::{fetch_keys, JwkKeys};
 // use crate::auth::verifier::{Claims, JwkVerifier};
