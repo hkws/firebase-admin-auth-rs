@@ -22,7 +22,6 @@ pub struct RequestUser {
 impl FromRequest for RequestUser {
     type Error = Error;
     type Future = Ready<Result<Self, Self::Error>>;
-    type Config = ();
 
     fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
         let token = match req.headers().get("Authorization") {
@@ -68,9 +67,10 @@ async fn uid(user: RequestUser) -> impl Responder {
 }
 
 #[get("/{file}")]
-async fn index(web::Path(file): web::Path<String>) -> Result<NamedFile> {
-    let path: PathBuf = fs::canonicalize(format!("./examples/statics/{}", file)).unwrap();
-    Ok(NamedFile::open(path)?)
+async fn index(path: web::Path<String>) -> impl Responder {
+    let filepath = path.into_inner();
+    let file: PathBuf =  fs::canonicalize(format!("./examples/statics/{}", filepath)).unwrap();
+    NamedFile::open_async(file).await
 }
 
 #[actix_web::main]
