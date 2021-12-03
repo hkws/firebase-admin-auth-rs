@@ -1,7 +1,8 @@
 use reqwest;
 use std::time::Duration;
 use std::error::Error;
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
+use crate::header_parser::get_max_age;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
 //---------------------
@@ -30,18 +31,19 @@ pub fn get_configuration() -> JwkConfig {
 //---------------------
 // 公開鍵取得処理
 //---------------------
-#[derive(Debug, Deserialize)]
-struct KeyResponse {
-    keys: Vec<JwkKey>,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct KeyResponse {
+    pub keys: Vec<JwkKey>,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct JwkKey {
     pub e: String,
     pub alg: String,
     pub kty: String,
     pub kid: String,
     pub n: String,
+    pub r#use: String,
 }
 
 pub struct JwkKeys {
@@ -71,49 +73,5 @@ pub async fn fetch_keys() -> Result<JwkKeys, Box<dyn Error>> {
     return fetch_keys_with_config(get_configuration()).await
 }
 
-use reqwest::Response;
-use reqwest::header::HeaderValue;
 
-pub enum MaxAgeParseError {
-    NoMaxAgeSpecified,
-    NoCacheControlHeader,
-    MaxAgeValueEmpty,
-    NonNumericMaxAge
-}
 
-pub fn get_max_age(response: &Response) -> Result<Duration, MaxAgeParseError>{
-    let headers = response.headers();
-    let cache_control = headers.get("Cache-Control");
-
-    match cache_control {
-        Some(cache_control_value) => parse_cache_control_value(cache_control_value),
-        None => Err(MaxAgeParseError::NoCacheControlHeader)
-    }
-}
-
-fn parse_cache_control_value(value: &HeaderValue) -> Result<Duration, MaxAgeParseError> {
-    match value.to_str() {
-        Ok(str_value) => _parse_cache_control_value(str_value),
-        Err(_) => Err(MaxAgeParseError::NoCacheControlHeader)
-    }
-}
-
-fn _parse_cache_control_value(value: &str) -> Result<Duration, MaxAgeParseError> {
-    let tokens: Vec<&str> = value.split(",").collect();
-    for token in tokens {
-        let kv: Vec<&str> = token.split("=").map(|s| s.trim()).collect();
-        let key = kv.first().unwrap();
-        let value = kv.get(1);
-        if String::from("max-age").eq(&key.to_lowercase()) {
-            match value {
-                Some(value) => {
-                    return Ok(Duration::from_secs(value.parse().map_err(|_| MaxAgeParseError::NonNumericMaxAge)?))
-                },
-                None => {
-                    return Err(MaxAgeParseError::MaxAgeValueEmpty)
-                } 
-            }
-        }
-    }
-    return Err(MaxAgeParseError::NoMaxAgeSpecified);
-}
