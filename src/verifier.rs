@@ -21,7 +21,7 @@ enum VerificationError {
     UnknownKeyAlgorithm
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct JwkVerifier {
     keys: HashMap<String, JwkKey>,
     config: JwkConfig
@@ -42,8 +42,11 @@ impl JwkVerifier {
             config: get_configuration()
         }
     }
-    fn get_key(&self, key_id: String) -> Option<&JwkKey> {
+    pub fn get_key(&self, key_id: String) -> Option<&JwkKey> {
         self.keys.get(&key_id)
+    }
+    pub fn get_config(&self) -> Option<&JwkConfig> {
+        Some(&self.config)
     }
     fn decode_token_with_key (
         &self,

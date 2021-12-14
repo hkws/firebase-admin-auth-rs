@@ -5,6 +5,9 @@ use serde::{Serialize, Deserialize};
 use crate::header_parser::get_max_age;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
+#[cfg(test)]
+use mockall::{automock};
+
 //---------------------
 // 公開鍵取得元に関する設定
 //---------------------
@@ -46,7 +49,7 @@ pub struct JwkKey {
     pub r#use: String,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct JwkKeys {
     pub keys: Vec<JwkKey>,
     pub validity: Duration,
@@ -55,17 +58,20 @@ pub struct JwkKeys {
 //
 // jwk_configで設定してあるパラメータを使って公開鍵を取得する
 //
-pub async fn fetch_keys() -> Result<JwkKeys, Box<dyn Error>> {
-    let config = get_configuration();
-    let response = reqwest::get(&config.url).await?;
-    let max_age = get_max_age(&response).unwrap_or(DEFAULT_TIMEOUT);
-    let response_body = response.json::<KeyResponse>().await?;
-    return Ok(JwkKeys {
-        keys: response_body.keys,
-        validity: max_age
-    })
+#[cfg_attr(test, automock)]
+pub mod keys { 
+    use super::*;
+    pub async fn fetch_keys() -> Result<JwkKeys, String> {
+        let config = get_configuration();
+        let response = reqwest::get(&config.url).await.map_err(|e| e.to_string())?;
+        let max_age = get_max_age(&response).unwrap_or(DEFAULT_TIMEOUT);
+        let response_body = response.json::<KeyResponse>().await.map_err(|e| e.to_string())?;
+        return Ok(JwkKeys {
+            keys: response_body.keys,
+            validity: max_age
+        })
+    }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -135,7 +141,7 @@ mod tests {
         env::set_var("JWK_AUDIENCE", "audience");
         env::set_var("JWK_ISSUER", "issuer");
 
-        let result = fetch_keys().await;
+        let result = keys::fetch_keys().await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), JwkKeys {
             keys: keys,
