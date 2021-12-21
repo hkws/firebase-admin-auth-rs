@@ -1,12 +1,12 @@
-use reqwest;
-use std::time::Duration;
-use std::error::Error;
-use serde::{Serialize, Deserialize};
 use crate::header_parser::get_max_age;
+use reqwest;
+use serde::{Deserialize, Serialize};
+use std::error::Error;
+use std::time::Duration;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[cfg(test)]
-use mockall::{automock};
+use mockall::automock;
 
 //---------------------
 // 公開鍵取得元に関する設定
@@ -15,7 +15,7 @@ use mockall::{automock};
 pub struct JwkConfig {
     pub url: String,
     pub audience: String,
-    pub issuer: String
+    pub issuer: String,
 }
 
 fn expect_env_var(name: &str, _default: &str) -> String {
@@ -23,11 +23,15 @@ fn expect_env_var(name: &str, _default: &str) -> String {
 }
 
 // 環境変数から公開鍵取得元の情報を取得
-pub fn get_configuration() -> JwkConfig {
-    JwkConfig {
-        url: expect_env_var("JWK_URL", "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"),
-        audience: expect_env_var("JWK_AUDIENCE", "fir-admin-auth-rs-test"),
-        issuer: expect_env_var("JWK_ISSUER", "https://securetoken.google.com/fir-admin-auth-rs-test"),
+#[cfg_attr(test, automock)]
+pub mod configs {
+    use super::*;
+    pub fn get_configuration() -> JwkConfig {
+        JwkConfig {
+            url: expect_env_var("JWK_URL", "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"),
+            audience: expect_env_var("JWK_AUDIENCE", "fir-admin-auth-rs-test"),
+            issuer: expect_env_var("JWK_ISSUER", "https://securetoken.google.com/fir-admin-auth-rs-test"),
+        }
     }
 }
 
@@ -59,37 +63,37 @@ pub struct JwkKeys {
 // jwk_configで設定してあるパラメータを使って公開鍵を取得する
 //
 #[cfg_attr(test, automock)]
-pub mod keys { 
+pub mod keys {
     use super::*;
     pub async fn fetch_keys() -> Result<JwkKeys, String> {
-        let config = get_configuration();
+        let config = configs::get_configuration();
         let response = reqwest::get(&config.url).await.map_err(|e| e.to_string())?;
         let max_age = get_max_age(&response).unwrap_or(DEFAULT_TIMEOUT);
-        let response_body = response.json::<KeyResponse>().await.map_err(|e| e.to_string())?;
+        let response_body = response
+            .json::<KeyResponse>()
+            .await
+            .map_err(|e| e.to_string())?;
         return Ok(JwkKeys {
             keys: response_body.keys,
-            validity: max_age
-        })
+            validity: max_age,
+        });
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::jwk::{JwkKey, KeyResponse};
     use std::env;
-    use crate::jwk::{KeyResponse, JwkKey};
-    use wiremock::{MockServer, Mock, ResponseTemplate};
     use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    // audience: expect_env_var("JWK_AUDIENCE", "fir-admin-auth-rs-test"),
-    // issuer: expect_env_var("JWK_ISSUER", "https://securetoken.google.com/fir-admin-auth-rs-test"),
-    
     #[test]
     fn test_get_configuration() {
         env::set_var("JWK_URL", "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com");
         env::set_var("JWK_AUDIENCE", "audience");
         env::set_var("JWK_ISSUER", "issuer");
-        assert_eq!(get_configuration(), JwkConfig {
+        assert_eq!(configs::get_configuration(), JwkConfig {
             url: "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com".to_string(),
             audience: "audience".to_string(),
             issuer: "issuer".to_string()
@@ -98,7 +102,6 @@ mod tests {
         env::remove_var("JWK_AUDIENCE");
         env::remove_var("JWK_ISSUER");
     }
-    
     #[tokio::test]
     async fn test_fetch_keys() {
         let mock_server = MockServer::start().await;
@@ -123,35 +126,33 @@ mod tests {
         ];
         Mock::given(method("GET"))
             .and(path("/test"))
-            .respond_with(ResponseTemplate::new(200)
-                            .insert_header(
-                                "Cache-Control",
-                                &format!("public, max-age={}, must-revalidate, no-transform", maxage) as &str
-                            )
-                            .set_body_json(
-                                KeyResponse {
-                                    keys: keys.clone()
-                                }
-                            )
-                          )
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header(
+                        "Cache-Control",
+                        &format!("public, max-age={}, must-revalidate, no-transform", maxage)
+                            as &str,
+                    )
+                    .set_body_json(KeyResponse { keys: keys.clone() }),
+            )
             .mount(&mock_server)
             .await;
-        
         env::set_var("JWK_URL", &format!("{}/test", &mock_server.uri()));
         env::set_var("JWK_AUDIENCE", "audience");
         env::set_var("JWK_ISSUER", "issuer");
 
         let result = keys::fetch_keys().await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), JwkKeys {
-            keys: keys,
-            validity: Duration::from_secs(maxage)
-        });
+        assert_eq!(
+            result.unwrap(),
+            JwkKeys {
+                keys: keys,
+                validity: Duration::from_secs(maxage)
+            }
+        );
 
         env::remove_var("JWK_URL");
         env::remove_var("JWK_AUDIENCE");
         env::remove_var("JWK_ISSUER");
     }
-
 }
-

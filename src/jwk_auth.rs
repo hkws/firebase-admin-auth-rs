@@ -1,18 +1,18 @@
-use mockall_double::double;
 #[double]
 use crate::jwk::keys;
+use mockall_double::double;
 
 use crate::verifier::{Claims, JwkVerifier};
 use jsonwebtoken::TokenData;
+use log::info;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use log::{info};
-use tokio::time::sleep;
 use tokio::task::JoinHandle;
+use tokio::time::sleep;
 
 pub struct JwkAuth {
     verifier: Arc<Mutex<JwkVerifier>>,
-    task_handler: Arc<Mutex<Box<JoinHandle<()>>>>
+    task_handler: Arc<Mutex<Box<JoinHandle<()>>>>,
 }
 
 impl Drop for JwkAuth {
@@ -34,7 +34,7 @@ impl JwkAuth {
         let verifier = Arc::new(Mutex::new(JwkVerifier::new(jwk_keys.keys)));
         let mut instance = JwkAuth {
             verifier: verifier,
-            task_handler: Arc::new(Mutex::new(Box::new(tokio::spawn(async {}))))
+            task_handler: Arc::new(Mutex::new(Box::new(tokio::spawn(async {})))),
         };
         instance.start_periodic_key_update();
         instance
@@ -53,10 +53,13 @@ impl JwkAuth {
                             let mut verifier = verifier_ref.lock().unwrap();
                             verifier.set_keys(jwk_keys.keys);
                         }
-                        info!("Updated JWK Keys. Next refresh will be in {:?}", jwk_keys.validity);
+                        info!(
+                            "Updated JWK Keys. Next refresh will be in {:?}",
+                            jwk_keys.validity
+                        );
                         jwk_keys.validity
-                    },
-                    Err(_) => Duration::from_secs(60)
+                    }
+                    Err(_) => Duration::from_secs(60),
                 };
                 sleep(delay).await;
             }
@@ -66,14 +69,15 @@ impl JwkAuth {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[double]
+    use crate::jwk::configs;
+    use crate::jwk::{JwkConfig, JwkKey, JwkKeys};
     use std::env;
-    use crate::jwk::{JwkKey, JwkKeys, JwkConfig};
-    use wiremock::{MockServer, Mock, ResponseTemplate};
     use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
     async fn test_jwk_auth_new() {
@@ -82,42 +86,49 @@ mod tests {
         let keys = vec![
             JwkKey {
                 alg: "RS256".to_string(),
-                kid: "kid-1".to_string(),
+                kid: "kid-0".to_string(),
                 e: "AQAB".to_string(),
                 n: "n-string".to_string(),
                 kty: "RSA".to_string(),
-                r#use: "sig".to_string()
+                r#use: "sig".to_string(),
             },
             JwkKey {
                 e: "AQAB".to_string(),
                 kty: "RSA".to_string(),
                 n: "n-string".to_string(),
-                kid: "kid-2".to_string(),
+                kid: "kid-1".to_string(),
                 alg: "RS256".to_string(),
-                r#use: "sig".to_string()
-            }
+                r#use: "sig".to_string(),
+            },
         ];
-        
         env::set_var("JWK_URL", "http://example");
         env::set_var("JWK_AUDIENCE", "audience");
         env::set_var("JWK_ISSUER", "issuer");
 
         let ctx = keys::fetch_keys_context();
-        ctx.expect()
-            .return_const(Ok(JwkKeys {
-                keys: keys.clone(),
-                validity: Duration::from_secs(maxage)
-            }));
+        ctx.expect().return_const(Ok(JwkKeys {
+            keys: keys.clone(),
+            validity: Duration::from_secs(maxage),
+        }));
+        let ctx = configs::get_configuration_context();
+        ctx.expect().return_once(|| JwkConfig {
+            url: "https://example.com".to_string(),
+            audience: "aud".to_string(),
+            issuer: "iss".to_string(),
+        });
 
         let jwk_auth = JwkAuth::new().await;
         let verifier = jwk_auth.verifier.lock().unwrap();
-        assert_eq!(verifier.get_key("kid-1".to_string()), Some(&keys[0]));
-        assert_eq!(verifier.get_key("kid-2".to_string()), Some(&keys[1]));
-        assert_eq!(verifier.get_config(), Some(&JwkConfig {
-            url: "http://example".to_string(),
-            audience: "audience".to_string(),
-            issuer: "issuer".to_string()
-        }));
+        assert_eq!(verifier.get_key("kid-0"), Some(&keys[0]));
+        assert_eq!(verifier.get_key("kid-1"), Some(&keys[1]));
+        assert_eq!(
+            verifier.get_config(),
+            Some(&JwkConfig {
+                url: "https://example.com".to_string(),
+                audience: "aud".to_string(),
+                issuer: "iss".to_string()
+            })
+        );
 
         env::remove_var("JWK_URL");
         env::remove_var("JWK_AUDIENCE");
@@ -161,7 +172,6 @@ mod tests {
     //                       )
     //         .mount(&mock_server)
     //         .await;
-        
     //     env::set_var("JWK_URL", &format!("{}/test", &mock_server.uri()));
     //     env::set_var("JWK_AUDIENCE", "audience");
     //     env::set_var("JWK_ISSUER", "issuer");
@@ -180,6 +190,4 @@ mod tests {
     //     env::remove_var("JWK_AUDIENCE");
     //     env::remove_var("JWK_ISSUER");
     // }
-    
-    
 }
