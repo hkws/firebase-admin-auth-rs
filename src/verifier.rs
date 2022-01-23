@@ -140,4 +140,12 @@ mod tests {
             })
         );
     }
+
+    #[test]
+    fn test_set_keys() {
+        let keys = get_test_keys();
+        let mut verifier = JwkVerifier::new(keys.clone(), "aud".to_string(), "iss".to_string());
+        verifier.set_keys(vec![]);
+        assert!(verifier.get_key("kid-0").is_none());
+    }
 }
