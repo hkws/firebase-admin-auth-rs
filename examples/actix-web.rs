@@ -8,9 +8,9 @@ use futures_util::future::{err, ok, Ready};
 use serde::{Deserialize, Serialize};
 
 use actix_files::NamedFile;
-use std::fs;
-
+use dotenv::dotenv;
 use env_logger;
+use std::fs;
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct RequestUser {
@@ -78,6 +78,7 @@ fn expect_env_var(name: &str, _default: &str) -> String {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    dotenv().ok();
     std::env::set_var("RUST_LOG", "info,actix_web=debug");
     env_logger::Builder::from_default_env()
         .target(env_logger::Target::Stdout)
@@ -85,8 +86,8 @@ async fn main() -> std::io::Result<()> {
 
     let auth = web::Data::new(
         JwkAuth::new(
-            expect_env_var("JWK_AUDIENCE", "fir-admin-auth-rs-test"),
-            expect_env_var("JWK_ISSUER", "https://securetoken.google.com/fir-admin-auth-rs-test"),
+            expect_env_var("JWK_AUDIENCE", ""),
+            expect_env_var("JWK_ISSUER", ""),
             Some(expect_env_var("JWK_URL", "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"))
         ).await
     );
