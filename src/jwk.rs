@@ -1,9 +1,11 @@
 use crate::header_parser::get_max_age;
+use async_trait::async_trait;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
-use async_trait::async_trait;
+const DEFAULT_URL: &'static str =
+    "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct KeyResponse {
@@ -31,25 +33,33 @@ pub struct JwkFetcher {
     pub url: String,
 }
 
+#[derive(Debug)]
+pub enum KeyFetchError {
+    RequestError(reqwest::Error),
+    ReponseBodyError(reqwest::Error),
+}
+
 #[async_trait]
 pub trait Fetcher {
     fn new(url: Option<String>) -> Self;
-    async fn fetch_keys(&self) -> Result<Jwks, String>;
+    async fn fetch_keys(&self) -> Result<Jwks, KeyFetchError>;
 }
 
 #[async_trait]
 impl Fetcher for JwkFetcher {
     fn new(url: Option<String>) -> JwkFetcher {
-        let _url = url.unwrap_or("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com".to_string());
+        let _url = url.unwrap_or(DEFAULT_URL.to_string());
         JwkFetcher { url: _url }
     }
-    async fn fetch_keys(&self) -> Result<Jwks, String> {
-        let response = reqwest::get(&self.url).await.map_err(|e| e.to_string())?;
+    async fn fetch_keys(&self) -> Result<Jwks, KeyFetchError> {
+        let response = reqwest::get(&self.url)
+            .await
+            .map_err(|e| KeyFetchError::RequestError(e))?;
         let max_age = get_max_age(&response).unwrap_or(DEFAULT_TIMEOUT);
         let response_body = response
             .json::<KeyResponse>()
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| KeyFetchError::ReponseBodyError(e))?;
         return Ok(Jwks {
             keys: response_body.keys,
             validity: max_age,
@@ -61,6 +71,19 @@ impl Fetcher for JwkFetcher {
 mod tests {
     use super::*;
     use crate::tests::*;
+
+    #[tokio::test]
+    async fn test_new_without_url() {
+        let result = JwkFetcher::new(None);
+        assert_eq!(result.url, DEFAULT_URL.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_new_with_url() {
+        let url = "http://example/test".to_string();
+        let result = JwkFetcher::new(Some(url.clone()));
+        assert_eq!(result.url, url);
+    }
 
     #[tokio::test]
     async fn test_fetch_keys() {
@@ -77,5 +100,22 @@ mod tests {
                 validity: Duration::from_secs(20045)
             }
         );
+    }
+
+    #[tokio::test]
+    async fn test_fetch_keys_request_error() {
+        let result = JwkFetcher::new(Some("http://example/test".to_string()))
+            .fetch_keys()
+            .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_fetch_keys_invalid_response() {
+        let mock_server = get_mock_server_invalid_response().await;
+        let result = JwkFetcher::new(Some(get_mock_url(&mock_server)))
+            .fetch_keys()
+            .await;
+        assert!(result.is_err());
     }
 }

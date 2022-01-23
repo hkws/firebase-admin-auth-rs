@@ -53,6 +53,18 @@ mod tests {
         mock_server
     }
 
+    pub async fn get_mock_server_invalid_response() -> MockServer {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path(PATH))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        mock_server
+    }
+
     pub fn get_mock_url(mock_server: &MockServer) -> String {
         format!("{}{}", mock_server.uri(), PATH)
     }
