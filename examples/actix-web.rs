@@ -72,6 +72,10 @@ async fn index(req: HttpRequest, path: web::Path<String>) -> impl Responder {
     HttpResponse::NotFound().finish()
 }
 
+fn expect_env_var(name: &str, _default: &str) -> String {
+    return std::env::var(name).unwrap_or(_default.to_string());
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "info,actix_web=debug");
@@ -79,7 +83,13 @@ async fn main() -> std::io::Result<()> {
         .target(env_logger::Target::Stdout)
         .init();
 
-    let auth = web::Data::new(JwkAuth::new().await);
+    let auth = web::Data::new(
+        JwkAuth::new(
+            expect_env_var("JWK_AUDIENCE", "fir-admin-auth-rs-test"),
+            expect_env_var("JWK_ISSUER", "https://securetoken.google.com/fir-admin-auth-rs-test"),
+            Some(expect_env_var("JWK_URL", "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"))
+        ).await
+    );
     HttpServer::new(move || {
         App::new()
             .app_data(auth.clone())

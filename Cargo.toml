@@ -14,7 +14,7 @@ reqwest = { version = "0.11.6", features = ["json"] }
 hyper = { version = "0.14.15" }
 log = "0.4"
 tokio = { version = "1.14.0", features = ["rt", "time", "macros"] }
-mockall_double = "0.1.0"
+async-trait = "0.1.52"
 
 [dev-dependencies]
 actix-web = "4.0.0-beta.12"
@@ -24,3 +24,9 @@ env_logger = "0.7"
 actix-cors = "0.5.3"
 wiremock = "0.5"
 mockall = "0.11.0"
+mockall_double = "0.1.0"
+openssl = "0.10.38"
+base64 = "0.13.0"
+num = "0.4.0"
+# jsonwebkey-convert = { version="0.3.0", features = ["pem_support"] }
+# jsonwebkey = { version = "0.3.4", features = ["generate", "jwt-convert"] }
