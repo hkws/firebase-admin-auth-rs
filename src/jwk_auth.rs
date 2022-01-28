@@ -7,6 +7,10 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
+const ISSUER_URL: &'static str = "https://securetoken.google.com/";
+const DEFAULT_PUBKEY_URL: &'static str =
+    "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
+
 pub struct JwkAuth {
     verifier: Arc<Mutex<JwkVerifier>>,
     fetcher: Arc<JwkFetcher>,
@@ -21,8 +25,14 @@ impl Drop for JwkAuth {
 }
 
 impl JwkAuth {
-    pub async fn new(audience: String, issuer: String, pub_key_url: Option<String>) -> JwkAuth {
-        let fetcher = JwkFetcher::new(pub_key_url);
+    pub async fn new(project_id: String) -> JwkAuth {
+        let pubkey_url = DEFAULT_PUBKEY_URL.to_string();
+        Self::_new(project_id, pubkey_url).await
+    }
+    pub async fn _new(project_id: String, pubkey_url: String) -> JwkAuth {
+        let issuer = format!("{}{}", ISSUER_URL, project_id.clone());
+        let audience = project_id;
+        let fetcher = JwkFetcher::new(pubkey_url);
         let jwk_key_result = fetcher.fetch_keys().await;
         let jwk_keys = match jwk_key_result {
             Ok(keys) => keys,
@@ -84,13 +94,9 @@ mod tests {
     async fn test_jwk_auth_new() {
         let keys = get_test_keys();
         let mock_server = get_mock_server().await;
+        let project_id = "pj".to_string();
 
-        let jwk_auth = JwkAuth::new(
-            "aud".to_string(),
-            "iss".to_string(),
-            Some(get_mock_url(&mock_server)),
-        )
-        .await;
+        let jwk_auth = JwkAuth::_new(project_id.clone(), get_mock_url(&mock_server)).await;
         let verifier = jwk_auth.verifier.lock().unwrap();
 
         assert_eq!(verifier.get_key("kid-0"), Some(&keys[0]));
@@ -98,8 +104,8 @@ mod tests {
         assert_eq!(
             verifier.get_config(),
             Some(&JwkConfig {
-                audience: "aud".to_string(),
-                issuer: "iss".to_string()
+                audience: project_id.clone(),
+                issuer: format!("{}{}", ISSUER_URL, project_id.clone())
             })
         );
     }

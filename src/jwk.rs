@@ -4,8 +4,6 @@ use reqwest;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
-const DEFAULT_URL: &'static str =
-    "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct KeyResponse {
@@ -41,15 +39,14 @@ pub enum KeyFetchError {
 
 #[async_trait]
 pub trait Fetcher {
-    fn new(url: Option<String>) -> Self;
+    fn new(url: String) -> Self;
     async fn fetch_keys(&self) -> Result<Jwks, KeyFetchError>;
 }
 
 #[async_trait]
 impl Fetcher for JwkFetcher {
-    fn new(url: Option<String>) -> JwkFetcher {
-        let _url = url.unwrap_or(DEFAULT_URL.to_string());
-        JwkFetcher { url: _url }
+    fn new(url: String) -> JwkFetcher {
+        JwkFetcher { url: url }
     }
     async fn fetch_keys(&self) -> Result<Jwks, KeyFetchError> {
         let response = reqwest::get(&self.url)
@@ -73,15 +70,9 @@ mod tests {
     use crate::tests::*;
 
     #[tokio::test]
-    async fn test_new_without_url() {
-        let result = JwkFetcher::new(None);
-        assert_eq!(result.url, DEFAULT_URL.to_string());
-    }
-
-    #[tokio::test]
     async fn test_new_with_url() {
         let url = "http://example/test".to_string();
-        let result = JwkFetcher::new(Some(url.clone()));
+        let result = JwkFetcher::new(url.clone());
         assert_eq!(result.url, url);
     }
 
@@ -89,7 +80,7 @@ mod tests {
     async fn test_fetch_keys() {
         let mock_server = get_mock_server().await;
         let keys = get_test_keys();
-        let result = JwkFetcher::new(Some(get_mock_url(&mock_server)))
+        let result = JwkFetcher::new(get_mock_url(&mock_server))
             .fetch_keys()
             .await;
         assert!(result.is_ok());
@@ -104,7 +95,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_keys_request_error() {
-        let result = JwkFetcher::new(Some("http://example/test".to_string()))
+        let result = JwkFetcher::new("http://example/test".to_string())
             .fetch_keys()
             .await;
         assert!(result.is_err());
@@ -113,7 +104,7 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_keys_invalid_response() {
         let mock_server = get_mock_server_invalid_response().await;
-        let result = JwkFetcher::new(Some(get_mock_url(&mock_server)))
+        let result = JwkFetcher::new(get_mock_url(&mock_server))
             .fetch_keys()
             .await;
         assert!(result.is_err());

@@ -84,13 +84,7 @@ async fn main() -> std::io::Result<()> {
         .target(env_logger::Target::Stdout)
         .init();
 
-    let auth = web::Data::new(
-        JwkAuth::new(
-            expect_env_var("JWK_AUDIENCE", ""),
-            expect_env_var("JWK_ISSUER", ""),
-            Some(expect_env_var("JWK_URL", "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"))
-        ).await
-    );
+    let auth = web::Data::new(JwkAuth::new(expect_env_var("FIREBASE_PROJECT_ID", "")).await);
     HttpServer::new(move || {
         App::new()
             .app_data(auth.clone())
