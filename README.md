@@ -1,5 +1,7 @@
 # firebase-admin-auth-rs
 
+## About
+
 validate firabase ID token for web backend written in Rust
 
 ## Usage
@@ -7,3 +9,7 @@ validate firabase ID token for web backend written in Rust
 ## Example
 
 see [actix-web example](https://github.com/hkws/firebase-admin-auth-rs/blob/main/examples/actix-web.rs)
+
+## License
+
+MIT
