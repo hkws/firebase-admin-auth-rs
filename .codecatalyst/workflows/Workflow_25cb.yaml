@@ -1,0 +1,9 @@
+Name: Workflow_25cb
+SchemaVersion: "1.0"
+
+# Optional - Set automatic triggers.
+Triggers:
+  - Type: PUSH
+    Branches:
+      - main
+Actions:
